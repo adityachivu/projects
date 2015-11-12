@@ -1,0 +1,61 @@
+function [model] = iris_train_ova()
+%This program trains C-SVM for IRIS dataset using SVMs
+%   and optimises relevant parameters for highest accuracy.
+%
+%
+
+%   Load instance and label data.
+load('iris.mat');
+load('iris_labels.mat');
+
+%   Useful constants.
+m = size(X, 1);
+n = size(X, 2);
+k = range(Y) + 1;
+
+%   Split data into train and test set.
+
+numTrain = m/2;
+numTest = m - numTrain;
+%%%%%%idx = randperm(m);
+
+X_train = X([1:2:150]', :);     %   TRAIN
+Y_train = Y([1:2:150]');        %
+
+X_test = X([2:2:150]', :);      %   TEST
+Y_test = Y([2:2:150]');         %
+
+%   Initialise K separate models for each of the K classes.
+model = cell(k, 1);
+
+%   Meshgrid to generate square matrix with all combinations of C and gamma.
+[C, gamm] = meshgrid(-5:2:15, -15:2:3);
+
+%   Array for storing cross validation accuracies for multiple C and gamma.
+crossvalid_acc = zeros(numel(C), 1);
+
+
+for i = 1:k
+
+    for j = 1:numel(C)
+
+        crossvalid_acc(i) = svmtrain(double(Y_train == i), X_train, sprintf('-s 0 -t 2 -c %f -g %f -v 5 -q', 2^C(j), 2^gamm(j)));
+        
+    end
+
+    %   Save the best value for C and gamma.
+    [~, id] = max(crossvalid_acc);
+    optimum_C = 2^C(id);
+    optimum_gamma = 2^gamm(id);
+    max_accuracy = crossvalid_acc(id);
+
+    %   Display results.
+    fprintf("\n(For class %f:\nBest C = %f\nBest gamma = %f\nBest Accuracy = %f\n", i, optimum_C, optimum_gamma, max_accuracy);
+
+    %   Now train with best values.
+    model{i} = svmtrain(Y, X, sprintf('-s 0 -t 2 -c %f -g %f -b 1 -q', optimum_C, optimum_gamma));
+
+
+end
+
+end

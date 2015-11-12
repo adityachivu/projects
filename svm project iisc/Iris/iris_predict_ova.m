@@ -1,0 +1,25 @@
+function [label] = iris_predict_ova(Y, X, model)
+%This program predicts the label of given test
+%   data when given K models by comparing probability
+%   estimates provided by svmpredict.
+%
+%
+
+%   Useful constants.
+k = range(Y) + 1;
+m = size(X, 1);
+
+%   collect probabilities from each classifier.
+
+for i = 1:k
+
+    [~,~,prob] = svmpredict(double(Y == i), X, model{i}, '-b 1 -q');
+    predict(:,k) = prob(:, model{i}.Label == 1);
+
+end
+
+
+%   Predict the class with the highest probability.
+[~, label] = max(predict, [], 2);
+
+end
