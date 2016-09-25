@@ -1,0 +1,9 @@
+[submodule "deeplearning/eyescream"]
+	path = deeplearning/eyescream
+	url = https://github.com/facebook/eyescream.git
+[submodule "deeplearning/shogun"]
+	path = deeplearning/shogun
+	url = https://github.com/shogun-toolbox/shogun.git
+[submodule "autodiff/CoDiPack"]
+	path = autodiff/CoDiPack
+	url = https://github.com/SciCompKL/CoDiPack.git
