@@ -1,0 +1,308 @@
+% Chapter 1
+
+\chapter{Implementation} % Main chapter title
+
+\label{implement} % For referencing the chapter elsewhere, use \ref{Chapter1} 
+
+\lhead{Chapter 4. \emph{Implementation}} % This is for the header on each page - perhaps a shortened title
+
+%----------------------------------------------------------------------------------------
+
+\section{Abstraction of Subroutines}
+
+\section{Code}
+Following is the code for seminal models highly illustrative of the architectures presented in earlier chapters.
+
+\subsection*{AlexNet}
+\begin{lstlisting}
+################################################################################
+#Michael Guerzhoy and Davi Frossard, 2016
+#AlexNet implementation in TensorFlow, with weights
+#Details: 
+#http://www.cs.toronto.edu/~guerzhoy/tf_alexnet/
+#
+#
+################################################################################
+
+from numpy import *
+import os
+from pylab import *
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.cbook as cbook
+import time
+from scipy.misc import imread
+from scipy.misc import imresize
+import matplotlib.image as mpimg
+from scipy.ndimage import filters
+import urllib
+from numpy import random
+
+
+import tensorflow as tf
+
+from caffe_classes import class_names
+
+train_x = zeros((1, 227,227,3)).astype(float32)
+train_y = zeros((1, 1000))
+xdim = train_x.shape[1:]
+ydim = train_y.shape[1]
+
+################################################################################
+#Read Image
+
+im1 = (imread("poodle.png")[:,:,:3]).astype(float32)
+im1 = im1 - mean(im1)
+
+im2 = (imread("laska.png")[:,:,:3]).astype(float32)
+im2 = im2 - mean(im2)
+
+################################################################################
+
+net_data = load("bvlc_alexnet.npy").item()
+
+def conv(input, kernel, biases, k_h, k_w, c_o, s_h, s_w,  padding="VALID", group=1):
+    '''From https://github.com/ethereon/caffe-tensorflow
+    '''
+    c_i = input.get_shape()[-1]
+    assert c_i%group==0
+    assert c_o%group==0
+    convolve = lambda i, k: tf.nn.conv2d(i, k, [1, s_h, s_w, 1], padding=padding)
+    
+    
+    if group==1:
+        conv = convolve(input, kernel)
+    else:
+        input_groups = tf.split(3, group, input)
+        kernel_groups = tf.split(3, group, kernel)
+        output_groups = [convolve(i, k) for i,k in zip(input_groups, kernel_groups)]
+        conv = tf.concat(3, output_groups)
+    return  tf.reshape(tf.nn.bias_add(conv, biases), [-1]+conv.get_shape().as_list()[1:])
+
+x = tf.placeholder(tf.float32, (None,) + xdim)
+
+
+#conv1
+k_h = 11; k_w = 11; c_o = 96; s_h = 4; s_w = 4
+conv1W = tf.Variable(net_data["conv1"][0])
+conv1b = tf.Variable(net_data["conv1"][1])
+conv1_in = conv(x, conv1W, conv1b, k_h, k_w, c_o, s_h, s_w, padding="SAME", group=1)
+conv1 = tf.nn.relu(conv1_in)
+
+#lrn1
+#lrn(2, 2e-05, 0.75, name='norm1')
+radius = 2; alpha = 2e-05; beta = 0.75; bias = 1.0
+lrn1 = tf.nn.local_response_normalization(conv1,
+                                                  depth_radius=radius,
+                                                  alpha=alpha,
+                                                  beta=beta,
+                                                  bias=bias)
+
+#maxpool1
+k_h = 3; k_w = 3; s_h = 2; s_w = 2; padding = 'VALID'
+maxpool1 = tf.nn.max_pool(lrn1, ksize=[1, k_h, k_w, 1], strides=[1, s_h, s_w, 1], padding=padding)
+
+
+#conv2
+k_h = 5; k_w = 5; c_o = 256; s_h = 1; s_w = 1; group = 2
+conv2W = tf.Variable(net_data["conv2"][0])
+conv2b = tf.Variable(net_data["conv2"][1])
+conv2_in = conv(maxpool1, conv2W, conv2b, k_h, k_w, c_o, s_h, s_w, padding="SAME", group=group)
+conv2 = tf.nn.relu(conv2_in)
+
+
+#lrn2
+radius = 2; alpha = 2e-05; beta = 0.75; bias = 1.0
+lrn2 = tf.nn.local_response_normalization(conv2,
+                                                  depth_radius=radius,
+                                                  alpha=alpha,
+                                                  beta=beta,
+                                                  bias=bias)
+
+#maxpool2                                               
+k_h = 3; k_w = 3; s_h = 2; s_w = 2; padding = 'VALID'
+maxpool2 = tf.nn.max_pool(lrn2, ksize=[1, k_h, k_w, 1], strides=[1, s_h, s_w, 1], padding=padding)
+
+#conv3
+k_h = 3; k_w = 3; c_o = 384; s_h = 1; s_w = 1; group = 1
+conv3W = tf.Variable(net_data["conv3"][0])
+conv3b = tf.Variable(net_data["conv3"][1])
+conv3_in = conv(maxpool2, conv3W, conv3b, k_h, k_w, c_o, s_h, s_w, padding="SAME", group=group)
+conv3 = tf.nn.relu(conv3_in)
+
+#conv4
+k_h = 3; k_w = 3; c_o = 384; s_h = 1; s_w = 1; group = 2
+conv4W = tf.Variable(net_data["conv4"][0])
+conv4b = tf.Variable(net_data["conv4"][1])
+conv4_in = conv(conv3, conv4W, conv4b, k_h, k_w, c_o, s_h, s_w, padding="SAME", group=group)
+conv4 = tf.nn.relu(conv4_in)
+
+
+#conv5
+k_h = 3; k_w = 3; c_o = 256; s_h = 1; s_w = 1; group = 2
+conv5W = tf.Variable(net_data["conv5"][0])
+conv5b = tf.Variable(net_data["conv5"][1])
+conv5_in = conv(conv4, conv5W, conv5b, k_h, k_w, c_o, s_h, s_w, padding="SAME", group=group)
+conv5 = tf.nn.relu(conv5_in)
+
+#maxpool5
+k_h = 3; k_w = 3; s_h = 2; s_w = 2; padding = 'VALID'
+maxpool5 = tf.nn.max_pool(conv5, ksize=[1, k_h, k_w, 1], strides=[1, s_h, s_w, 1], padding=padding)
+
+#fc6
+fc6W = tf.Variable(net_data["fc6"][0])
+fc6b = tf.Variable(net_data["fc6"][1])
+fc6 = tf.nn.relu_layer(tf.reshape(maxpool5, [-1, int(prod(maxpool5.get_shape()[1:]))]), fc6W, fc6b)
+
+#fc7
+fc7W = tf.Variable(net_data["fc7"][0])
+fc7b = tf.Variable(net_data["fc7"][1])
+fc7 = tf.nn.relu_layer(fc6, fc7W, fc7b)
+
+#fc8
+fc8W = tf.Variable(net_data["fc8"][0])
+fc8b = tf.Variable(net_data["fc8"][1])
+fc8 = tf.nn.xw_plus_b(fc7, fc8W, fc8b)
+
+
+#prob
+prob = tf.nn.softmax(fc8)
+
+init = tf.initialize_all_variables()
+sess = tf.Session()
+sess.run(init)
+
+t = time.time()
+output = sess.run(prob, feed_dict = {x:[im1,im2]})
+################################################################################
+
+#Output:
+for input_im_ind in range(output.shape[0]):
+    inds = argsort(output)[input_im_ind,:]
+    print "Image", input_im_ind
+    for i in range(5):
+        print class_names[inds[-1-i]], output[input_im_ind, inds[-1-i]]
+
+print time.time()-t
+\end{lstlisting}
+\subsection*{Char-rnn for sentence creation}
+\begin{lstlisting}
+# code from https://github.com/sherjilozair/
+from __future__ import print_function
+import numpy as np
+import tensorflow as tf
+
+import argparse
+import time
+import os
+from six.moves import cPickle
+
+from utils import TextLoader
+from model import Model
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data_dir', type=str, default='data/tinyshakespeare',
+                       help='data directory containing input.txt')
+    parser.add_argument('--save_dir', type=str, default='save',
+                       help='directory to store checkpointed models')
+    parser.add_argument('--rnn_size', type=int, default=128,
+                       help='size of RNN hidden state')
+    parser.add_argument('--num_layers', type=int, default=2,
+                       help='number of layers in the RNN')
+    parser.add_argument('--model', type=str, default='lstm',
+                       help='rnn, gru, or lstm')
+    parser.add_argument('--batch_size', type=int, default=50,
+                       help='minibatch size')
+    parser.add_argument('--seq_length', type=int, default=50,
+                       help='RNN sequence length')
+    parser.add_argument('--num_epochs', type=int, default=50,
+                       help='number of epochs')
+    parser.add_argument('--save_every', type=int, default=1000,
+                       help='save frequency')
+    parser.add_argument('--grad_clip', type=float, default=5.,
+                       help='clip gradients at this value')
+    parser.add_argument('--learning_rate', type=float, default=0.002,
+                       help='learning rate')
+    parser.add_argument('--decay_rate', type=float, default=0.97,
+                       help='decay rate for rmsprop')                       
+    parser.add_argument('--init_from', type=str, default=None,
+                       help="""continue training from saved model at this path. Path must contain files saved by previous training process: 
+                            'config.pkl'        : configuration;
+                            'chars_vocab.pkl'   : vocabulary definitions;
+                            'checkpoint'        : paths to model file(s) (created by tf).
+                                                  Note: this file contains absolute paths, be careful when moving files around;
+                            'model.ckpt-*'      : file(s) with model definition (created by tf)
+                        """)
+    args = parser.parse_args()
+    train(args)
+
+def train(args):
+    data_loader = TextLoader(args.data_dir, args.batch_size, args.seq_length)
+    args.vocab_size = data_loader.vocab_size
+    
+    # check compatibility if training is continued from previously saved model
+    if args.init_from is not None:
+        # check if all necessary files exist 
+        assert os.path.isdir(args.init_from)," %s must be a a path" % args.init_from
+        assert os.path.isfile(os.path.join(args.init_from,"config.pkl")),"config.pkl file does not exist in path %s"%args.init_from
+        assert os.path.isfile(os.path.join(args.init_from,"chars_vocab.pkl")),"chars_vocab.pkl.pkl file does not exist in path %s" % args.init_from
+        ckpt = tf.train.get_checkpoint_state(args.init_from)
+        assert ckpt,"No checkpoint found"
+        assert ckpt.model_checkpoint_path,"No model path found in checkpoint"
+
+        # open old config and check if models are compatible
+        with open(os.path.join(args.init_from, 'config.pkl')) as f:
+            saved_model_args = cPickle.load(f)
+        need_be_same=["model","rnn_size","num_layers","seq_length"]
+        for checkme in need_be_same:
+            assert vars(saved_model_args)[checkme]==vars(args)[checkme],"Command line argument and saved model disagree on '%s' "%checkme
+        
+        # open saved vocab/dict and check if vocabs/dicts are compatible
+        with open(os.path.join(args.init_from, 'chars_vocab.pkl')) as f:
+            saved_chars, saved_vocab = cPickle.load(f)
+        assert saved_chars==data_loader.chars, "Data and loaded model disagree on character set!"
+        assert saved_vocab==data_loader.vocab, "Data and loaded model disagree on dictionary mappings!"
+        
+    with open(os.path.join(args.save_dir, 'config.pkl'), 'wb') as f:
+        cPickle.dump(args, f)
+    with open(os.path.join(args.save_dir, 'chars_vocab.pkl'), 'wb') as f:
+        cPickle.dump((data_loader.chars, data_loader.vocab), f)
+        
+    model = Model(args)
+
+    with tf.Session() as sess:
+        tf.initialize_all_variables().run()
+        saver = tf.train.Saver(tf.all_variables())
+        # restore model
+        if args.init_from is not None:
+            saver.restore(sess, ckpt.model_checkpoint_path)
+        for e in range(args.num_epochs):
+            sess.run(tf.assign(model.lr, args.learning_rate * (args.decay_rate ** e)))
+            data_loader.reset_batch_pointer()
+            state = sess.run(model.initial_state)
+            for b in range(data_loader.num_batches):
+                start = time.time()
+                x, y = data_loader.next_batch()
+                feed = {model.input_data: x, model.targets: y}
+                for i, (c, h) in enumerate(model.initial_state):
+                    feed[c] = state[i].c
+                    feed[h] = state[i].h
+                train_loss, state, _ = sess.run([model.cost, model.final_state, model.train_op], feed)
+                end = time.time()
+                print("{}/{} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
+                    .format(e * data_loader.num_batches + b,
+                            args.num_epochs * data_loader.num_batches,
+                            e, train_loss, end - start))
+                if (e * data_loader.num_batches + b) % args.save_every == 0\
+                    or (e==args.num_epochs-1 and b == data_loader.num_batches-1): # save for the last result
+                    checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
+                    saver.save(sess, checkpoint_path, global_step = e * data_loader.num_batches + b)
+                    print("model saved to {}".format(checkpoint_path))
+
+if __name__ == '__main__':
+    main()
+\end{lstlisting}
+
+
+
